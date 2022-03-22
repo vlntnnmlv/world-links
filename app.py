@@ -3,6 +3,7 @@ from numba import njit
 from pandas import DataFrame
 from math import sqrt
 from numpy.random import uniform
+from threading import Thread
 
 class KeyHoldController:
     K_UP = False
@@ -14,11 +15,9 @@ class KeyHoldController:
     K_SHIFT = K_UP | K_DOWN | K_LEFT | K_RIGHT
     K_ZOOM = K_EQUALS | K_MINUS 
 
-@njit
 def _shift(r, span, offset):
     return r + offset
 
-@njit
 def _zoom(r, span, zoom):
     return (r - span / 2) * zoom + span / 2
 
@@ -39,9 +38,11 @@ class App:
         self.data['Cur_X'] = self.data['X']
         self.data['Cur_Y'] = self.data['Y']
 
-        self.x_offset = 0
-        self.y_offset = 0
-        self.zoom     = 1
+        self.x_offset  = 0
+        self.y_offset  = 0
+        self.zoom      = 1
+        self.threads   = [Thread(target=self.draw(i, 8)) for i in range(8)]
+        self.first_run = True
 
     def do_event(self, event):
         if event.type == pygame.QUIT:
@@ -80,44 +81,48 @@ class App:
             elif event.key == pygame.K_MINUS:
                 KeyHoldController.K_MINUS = False
 
+    def do_user_input(self):
+        if (KeyHoldController.K_LEFT):
+            self.data.Cur_X = self.data.Cur_X.apply(lambda x : _shift(x, self.width, 2))
+        if (KeyHoldController.K_RIGHT):
+            self.data.Cur_X = self.data.Cur_X.apply(lambda x : _shift(x, self.width, -2))
+        if (KeyHoldController.K_DOWN):
+            self.data.Cur_Y = self.data.Cur_Y.apply(lambda y : _shift(y, self.height, -2))
+        if (KeyHoldController.K_UP):
+            self.data.Cur_Y = self.data.Cur_Y.apply(lambda y : _shift(y, self.height, 2))
+        if (KeyHoldController.K_EQUALS):
+            self.data.Cur_X = self.data.Cur_X.apply(lambda x : _zoom(x, self.width, 1.01))
+            self.data.Cur_Y = self.data.Cur_Y.apply(lambda y : _zoom(y, self.height, 1.01))
+            self.zoom *= 1.01
+        if (KeyHoldController.K_MINUS):
+            self.data.Cur_X = self.data.Cur_X.apply(lambda x : _zoom(x, self.width, 0.99))
+            self.data.Cur_Y = self.data.Cur_Y.apply(lambda y : _zoom(y, self.height, 0.99))
+            self.zoom *= 0.99
+
     def run(self):
         self.running = True
+        self.first_run = False
         while self.running:
             for event in pygame.event.get():
                 self.do_event(event)
 
             # do calculations
-            if (KeyHoldController.K_LEFT):
-                self.data.Cur_X = self.data.Cur_X.apply(lambda x : _shift(x, self.width, 2))
-            if (KeyHoldController.K_RIGHT):
-                self.data.Cur_X = self.data.Cur_X.apply(lambda x : _shift(x, self.width, -2))
-            if (KeyHoldController.K_DOWN):
-                self.data.Cur_Y = self.data.Cur_Y.apply(lambda y : _shift(y, self.height, -2))
-            if (KeyHoldController.K_UP):
-                self.data.Cur_Y = self.data.Cur_Y.apply(lambda y : _shift(y, self.height, 2))
-            if (KeyHoldController.K_EQUALS):
-                self.data.Cur_X = self.data.Cur_X.apply(lambda x : _zoom(x, self.width, 1.01))
-                self.data.Cur_Y = self.data.Cur_Y.apply(lambda y : _zoom(y, self.height, 1.01))
-                self.zoom *= 1.01
-            if (KeyHoldController.K_MINUS):
-                self.data.Cur_X = self.data.Cur_X.apply(lambda x : _zoom(x, self.width, 0.99))
-                self.data.Cur_Y = self.data.Cur_Y.apply(lambda y : _zoom(y, self.height, 0.99))
-                self.zoom *= 0.99
-
+            self.do_user_input()
+            
             # draw
             self.screen.fill((0,0,0))
-            self.draw()
+            if self.first_run:
+                for t in self.threads: t.start()
             pygame.display.flip()
         
         
         pygame.quit()        
     
-    def draw(self):
-
-        # draw airports
-        for x, y in zip(self.data.Cur_X, self.data.Cur_Y):
+    def draw(self, start = 0, step = 1):
+        print(f"drawing {start} {step}")
+        for i in range(start, len(self.data), step):
             pygame.draw.circle(
                 self.screen,
                 (255,0,0),
-                (x,y),
+                (self.data.Cur_X[i],self.data.Cur_Y[i]),
                 1)
