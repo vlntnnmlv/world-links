@@ -1,7 +1,6 @@
-# TODO: Simulate complex logistic network.
-from decimal import localcontext
 import pandas as pd
-import multiprocessing as mp
+import numpy as np
+from multiprocessing import Pool
 from app import *
 
 def load_airports_data() -> pd.DataFrame:
@@ -26,50 +25,46 @@ def load_airports_data() -> pd.DataFrame:
     data = pd.read_csv("data/airports.csv", names=names, sep=":")
     return data
 
-def load_ports_data():
+def load_ports_data() -> pd.DataFrame:
     raw_data = pd.read_csv("data/ports.csv", sep=",")
     raw_data['Longitude'] = raw_data['shape'].apply(lambda x : float(x[7:-1].split(' ')[0]))
     raw_data['Latitude'] = raw_data['shape'].apply(lambda x : float(x[7:-1].split(' ')[1]))
     raw_data = raw_data.drop(columns=["shape"])
     return raw_data
 
-def load_trains_data():
+def load_trains_data() -> pd.DataFrame:
 
-    def transform_to_points(row):
-        lcoords = ''.join(c for c in row['shape'][18:-2] if c not in (')','(', ',')).split(' ')
-        return float(lcoords[0]), float(lcoords[1])
+    def format_df(df):
+        
+        def get_longitude(shape):
+            return float(''.join(c for c in shape[18:-2] if c not in (')','(', ',')).split(' ')[0])
+
+        def get_latitude(shape):
+            return float(''.join(c for c in shape[18:-2] if c not in (')','(', ',')).split(' ')[1])
+
+        df['Longitude'] = df['shape'].apply(lambda x: get_longitude(x))
+        df['Latitude'] = df['shape'].apply(lambda x: get_latitude(x))
+        df = df.rename(columns={"country" : "Country"})
+
+        return df[["Longitude", "Latitude", "Country"]]
 
     raw_data = pd.read_csv("data/trains.csv", sep=",")
+    return format_df(raw_data)
+
+def merge_data() -> pd.DataFrame:
     res = pd.DataFrame()
-    longitude = []
-    latitude = []
-    # with mp.Pool(8)as pool:
-    #     result = pool.imap(transform_to_points, raw_data.itertuples(), chunksize=10)
-    #     for v in result:
-    #         longitude.append(v[0])
-    #         latitude.append(v[1])
-
-    for line in raw_data['shape']:
-        lcoords = ''.join(c for c in line[18:-2] if c not in (')','(', ',')).split(' ')
-        longitude.append((float(lcoords[0])))
-        latitude.append((float(lcoords[1])))
-
-    res['Longitude'] = longitude
-    res['Latitude'] = latitude
-
-    return res
-
-def merge_data():
-    res = pd.DataFrame()
-    prts = load_ports_data()
-    airprts = load_airports_data()
-
+    ports = load_ports_data()[["Longitude","Latitude","country"]]
+    ports = ports.rename(columns={"country" : "Country"})
+    airports = load_airports_data()[["Longitude","Latitude","Country"]]
+    # trains = load_trains_data()[["Longitude","Latitude","Country"]]
+    ports['Type'] = ["Port" for _ in range(len(ports))]
+    airports['Type'] = ["Airport" for _ in range(len(airports))]
+    # trains['Type'] = ["Station" for _ in range(len(trains))]
+    return pd.concat([ports, airports])
 
 def main():
-    data = load_airports_data()
-
-    print(data.head())
+    app = App(merge_data())
+    app.run()
 
 if __name__ == "__main__":
-    app = App(load_trains_data())
-    app.run()
+    main()

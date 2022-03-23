@@ -27,7 +27,7 @@ class App:
         self.size = self.width, self.height = 1080, 720
         self.running = False
         self.screen = pygame.display.set_mode(self.size)
-        self.data = data
+        self.data = data.dropna()
         self.clock = pygame.time.Clock()
 
         self.data['X'] = \
@@ -41,8 +41,6 @@ class App:
         self.x_offset  = 0
         self.y_offset  = 0
         self.zoom      = 1
-        self.threads   = [Thread(target=self.draw(i, 8)) for i in range(8)]
-        self.first_run = True
 
     def do_event(self, event):
         if event.type == pygame.QUIT:
@@ -111,18 +109,17 @@ class App:
             
             # draw
             self.screen.fill((0,0,0))
-            if self.first_run:
-                for t in self.threads: t.start()
+            self.draw()
             pygame.display.flip()
         
         
         pygame.quit()        
     
     def draw(self, start = 0, step = 1):
-        print(f"drawing {start} {step}")
-        for i in range(start, len(self.data), step):
+        for x,y,t in zip(self.data.Cur_X, self.data.Cur_Y, self.data.Type):
+            color = (255,0,0) if t == "Airport" else (0,0,255)
             pygame.draw.circle(
                 self.screen,
-                (255,0,0),
-                (self.data.Cur_X[i],self.data.Cur_Y[i]),
+                color,
+                (x, y),
                 1)
