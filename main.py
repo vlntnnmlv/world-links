@@ -6,7 +6,6 @@ from geopy import distance
 
 # region Types
 
-
 class Point:
 
     # region Construction
@@ -18,6 +17,19 @@ class Point:
         self.coord_reverse = (lat, lon)
 
     # endregion
+
+
+class RailwayNetContainer(dict):
+    def __init__(self, data: pd.DataFrame):
+        self.raw_data = data
+        self.countries_sorted = data.iso3.value_counts().keys().to_list()
+        super(RailwayNetContainer, self).__init__(zip(self.countries_sorted, (None for _ in self.countries_sorted)))
+
+    def add(self, iso3: str) -> bool:
+        if iso3 in self.countries_sorted:
+            self[iso3] = RailwayNet(self.raw_data, iso3)
+            return True
+        return False
 
 
 class RailwayNet(nx.Graph):
@@ -35,7 +47,7 @@ class RailwayNet(nx.Graph):
                 a = Point(points[1][i], points[0][i])
                 self.add_node(b)
                 if (a != b) and \
-                    (a.lat != b.lat or a.lon != b.lon):
+                        (a.lat != b.lat or a.lon != b.lon):
                     self.add_edge(a, b)
     # endregion
 
@@ -44,13 +56,11 @@ class RailwayNet(nx.Graph):
     def draw(self, size : tuple[int, int]):
         """ function which draws train railways graph """
 
-        d = nx.degree(self)
-
         plt.figure(figsize=size)
         nx.draw(
             self,
-            nodelist=d.keys(),
-            node_size=[0 for v in d.values()],
+            nodelist=self.nodes,
+            node_size=[0 for v in self.nodes],
             pos=dict(zip(self.nodes, (node.coord for node in self.nodes)))
         )
         plt.show()
@@ -78,15 +88,16 @@ class RailwayNet(nx.Graph):
 
 # region Main
 
-def main():
+def main() -> None:
     data_path = "./data/trains.csv"
-    data = pd.read_csv(data_path, sep=',')
+    data = pd.read_csv(data_path, sep=',', dtype=str)
 
     print(data.head())
 
-    countries_sorted = data.iso3.value_counts().keys().to_list()
-    usa = RailwayNet(data, "USA")
-    usa.draw((40, 20))
+    container = RailwayNetContainer(data)
+    container.add("USA")
+
+    container["USA"].draw((40, 20))
 
 # endregion
 
