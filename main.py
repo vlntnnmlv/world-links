@@ -1,70 +1,80 @@
 import pandas as pd
-import numpy as np
-from multiprocessing import Pool
-from app import *
+import networkx as nx
 
-def load_airports_data() -> pd.DataFrame:
-    names = [
-        "ICAO",
-        "IATA",
-        "Name",
-        "City",
-        "Country",
-        "Lat_d",
-        "Lat_m",
-        "Lat_s",
-        "Lat_dir",
-        "Lon_d",
-        "Lon_m",
-        "Lon_s",
-        "Lon_dir",
-        "Altitude",
-        "Latitude",
-        "Longitude"
-        ]
-    data = pd.read_csv("data/airports.csv", names=names, sep=":")
-    return data
+from matplotlib import pyplot as plt
+from geopy import distance
 
-def load_ports_data() -> pd.DataFrame:
-    raw_data = pd.read_csv("data/ports.csv", sep=",")
-    raw_data['Longitude'] = raw_data['shape'].apply(lambda x : float(x[7:-1].split(' ')[0]))
-    raw_data['Latitude'] = raw_data['shape'].apply(lambda x : float(x[7:-1].split(' ')[1]))
-    raw_data = raw_data.drop(columns=["shape"])
-    return raw_data
+#region Types
 
-def load_trains_data() -> pd.DataFrame:
+class Point:
+  def __init__(self, lat : float, lon : float):
+    self.lat = lat
+    self.lon = lon
+    self.coord = (lon, lat)
+    self.coord_reverse = (lat, lon)
 
-    def format_df(df):
-        
-        def get_longitude(shape):
-            return float(''.join(c for c in shape[18:-2] if c not in (')','(', ',')).split(' ')[0])
+class RailwayNet(nx.Graph):
+    def __init__(self, data : pd.DataFrame, iso3 : str = None): 
+        super(RailwayNet, self).__init__()
+        countryCondition = True if iso3 is None else data.iso3 == iso3
+        for trail in data[countryCondition]['shape']:
+            points = RailwayNet.__getCoordsFromString(trail)
+            self.add_node(Point(points[1][0], points[0][0]))
+            for i in range(len(points[0]) - 1):
+                b = Point(points[1][i + 1], points[0][i + 1])
+                a = Point(points[1][i], points[0][i])
+                self.add_node(b)
+                if (a != b) and \
+                    (a.lat != b.lat or a.lon != b.lon):
+                    self.add_edge(a, b)
 
-        def get_latitude(shape):
-            return float(''.join(c for c in shape[18:-2] if c not in (')','(', ',')).split(' ')[1])
+    #region PublicMethods
 
-        df['Longitude'] = df['shape'].apply(lambda x: get_longitude(x))
-        df['Latitude'] = df['shape'].apply(lambda x: get_latitude(x))
-        df = df.rename(columns={"country" : "Country"})
+    def draw(self, size : tuple[int, int]):
+        """ function which draws train railways graph """
 
-        return df[["Longitude", "Latitude", "Country"]]
+        d = dict(self.degree)
 
-    raw_data = pd.read_csv("data/trains.csv", sep=",")
-    return format_df(raw_data)
+        plt.figure(figsize = size)
+        nx.draw(self, nodelist = d.keys(), node_size = [0 for v in d.values()], pos = dict(zip(self.nodes, (node.coord for node in self.nodes))))
+        plt.show()
 
-def merge_data() -> pd.DataFrame:
-    res = pd.DataFrame()
-    ports = load_ports_data()[["Longitude","Latitude","country"]]
-    ports = ports.rename(columns={"country" : "Country"})
-    airports = load_airports_data()[["Longitude","Latitude","Country"]]
-    # trains = load_trains_data()[["Longitude","Latitude","Country"]]
-    ports['Type'] = ["Port" for _ in range(len(ports))]
-    airports['Type'] = ["Airport" for _ in range(len(airports))]
-    # trains['Type'] = ["Station" for _ in range(len(trains))]
-    return pd.concat([ports, airports])
+    #endregion
+
+    #region ServiceMethods
+
+    def __getCoordsFromString(coords_string : str):
+        """ function which formats (lat, long) data nicely """
+
+        tuple_string = coords_string[15:]
+        coords_list = tuple_string.lstrip("( ").rstrip(") ").split(',')
+        for i in range(len(coords_list)):
+            coords_pair = coords_list[i].strip().split()
+            coords_list[i] = (float(coords_pair[0].strip("()")), float(coords_pair[1].strip("()")))
+        return ([coord[0] for coord in coords_list],[coord[1] for coord in coords_list])
+
+    #endregion
+
+
+#endregion
+
+#region Main
 
 def main():
-    app = App(merge_data())
-    app.run()
+    data_path = "./data/trains.csv"
+    data = pd.read_csv(data_path, sep=',')
+
+    print(data.head())
+
+    countries_sorted = data.iso3.value_counts().keys().to_list()
+    usa = RailwayNet(data, "USA")
+    usa.draw((40, 20))
+
+#endregion
+
+#region EntryPoint
 
 if __name__ == "__main__":
     main()
+
+#endregion
