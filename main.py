@@ -4,21 +4,31 @@ import networkx as nx
 from matplotlib import pyplot as plt
 from geopy import distance
 
-#region Types
+# region Types
+
 
 class Point:
-  def __init__(self, lat : float, lon : float):
-    self.lat = lat
-    self.lon = lon
-    self.coord = (lon, lat)
-    self.coord_reverse = (lat, lon)
+
+    # region Construction
+
+    def __init__(self, lat: float, lon: float):
+        self.lat = lat
+        self.lon = lon
+        self.coord = (lon, lat)
+        self.coord_reverse = (lat, lon)
+
+    # endregion
+
 
 class RailwayNet(nx.Graph):
-    def __init__(self, data : pd.DataFrame, iso3 : str = None): 
+
+    # region Construction
+
+    def __init__(self, data: pd.DataFrame, iso3: str = None):
         super(RailwayNet, self).__init__()
-        countryCondition = True if iso3 is None else data.iso3 == iso3
-        for trail in data[countryCondition]['shape']:
-            points = RailwayNet.__getCoordsFromString(trail)
+        country_condition = True if iso3 is None else data.iso3 == iso3
+        for trail in data[country_condition]['shape']:
+            points = RailwayNet.__get_coordinates_from_string(trail)
             self.add_node(Point(points[1][0], points[0][0]))
             for i in range(len(points[0]) - 1):
                 b = Point(points[1][i + 1], points[0][i + 1])
@@ -27,38 +37,46 @@ class RailwayNet(nx.Graph):
                 if (a != b) and \
                     (a.lat != b.lat or a.lon != b.lon):
                     self.add_edge(a, b)
+    # endregion
 
-    #region PublicMethods
+    # region PublicMethods
 
     def draw(self, size : tuple[int, int]):
         """ function which draws train railways graph """
 
-        d = dict(self.degree)
+        d = nx.degree(self)
 
-        plt.figure(figsize = size)
-        nx.draw(self, nodelist = d.keys(), node_size = [0 for v in d.values()], pos = dict(zip(self.nodes, (node.coord for node in self.nodes))))
+        plt.figure(figsize=size)
+        nx.draw(
+            self,
+            nodelist=d.keys(),
+            node_size=[0 for v in d.values()],
+            pos=dict(zip(self.nodes, (node.coord for node in self.nodes)))
+        )
         plt.show()
 
-    #endregion
+    # endregion
 
-    #region ServiceMethods
+    # region ServiceMethods
 
-    def __getCoordsFromString(coords_string : str):
+    @staticmethod
+    def __get_coordinates_from_string(coordinates_string: str) -> tuple[list[float], list[float]]:
         """ function which formats (lat, long) data nicely """
 
-        tuple_string = coords_string[15:]
-        coords_list = tuple_string.lstrip("( ").rstrip(") ").split(',')
-        for i in range(len(coords_list)):
-            coords_pair = coords_list[i].strip().split()
-            coords_list[i] = (float(coords_pair[0].strip("()")), float(coords_pair[1].strip("()")))
-        return ([coord[0] for coord in coords_list],[coord[1] for coord in coords_list])
+        tuple_string = coordinates_string[15:]
+        coordinates_list = tuple_string.lstrip("( ").rstrip(") ").split(',')
+        for i in range(len(coordinates_list)):
+            coordinates_pair = coordinates_list[i].strip().split()
+            coordinates_list[i] = (coordinates_pair[0].strip("()"), coordinates_pair[1].strip("()"))
 
-    #endregion
+        return [float(coord[0]) for coord in coordinates_list], [float(coord[1]) for coord in coordinates_list]
+
+    # endregion
 
 
-#endregion
+# endregion
 
-#region Main
+# region Main
 
 def main():
     data_path = "./data/trains.csv"
@@ -70,11 +88,12 @@ def main():
     usa = RailwayNet(data, "USA")
     usa.draw((40, 20))
 
-#endregion
+# endregion
 
-#region EntryPoint
+# region EntryPoint
+
 
 if __name__ == "__main__":
     main()
 
-#endregion
+# endregion
