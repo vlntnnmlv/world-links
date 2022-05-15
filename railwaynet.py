@@ -1,6 +1,10 @@
+import matplotlib  
+matplotlib.use('Qt5Agg')
+
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from typing import Union
+from geopy import distance
 
 import networkx as nx
 import pandas as pd
@@ -88,7 +92,7 @@ class RailwayNet(nx.Graph):
                 self.add_node(b)
                 if (a != b) and \
                         (a.lat != b.lat or a.lon != b.lon):
-                    self.add_edge(a, b)
+                    self.add_edge(a, b, weight=distance.distance(a.coord_reverse, b.coord_reverse).km)
 
         self.biggest_component = self.subgraph(max(nx.connected_components(self), key=len))
 
@@ -123,14 +127,17 @@ class RailwayNet(nx.Graph):
                 )
         plt.show()
 
+    def draw_degree_histogram(self):
+        plt.hist(nx.degree_histogram(self))
+        plt.show()
+
     def describe(self) -> None:
-        res = ""
+        res = "\n"
         res += f"                   nodes: {nx.number_of_nodes(self)}\n"
         res += f"                   edges: {nx.number_of_edges(self)}\n"
         res += f"              components: {nx.number_connected_components(self)}\n"
         res += f"               connected: {nx.is_connected(self)}\n"
         res += f"  biggest component part: {nx.number_of_nodes(self.biggest_component)/nx.number_of_nodes(self)}\n"
-        res += f" small-world coefficient: {nx.omega(self)}\n"
 
         print(res)
 

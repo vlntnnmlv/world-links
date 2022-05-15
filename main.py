@@ -3,7 +3,7 @@ from railwaynet import *
 # region WorkFlow
 
 
-def init() -> RailwayNetContainer:
+def init_world() -> RailwayNetContainer:
     data_path = "./data/trains.csv"
     data = pd.read_csv(data_path, sep=',', dtype=str)
 
@@ -15,10 +15,12 @@ def init() -> RailwayNetContainer:
 
 
 def main() -> None:
-    container = init()
-    g = container.get_net("USA")
+    container = init_world()
+    g = container.get_net("UKR")
 
     g.draw(size=(40, 20), show_components=True)
+    g.draw_degree_histogram()
+
     g.describe()
 
 # endregion
