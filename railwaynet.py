@@ -1,8 +1,53 @@
 from matplotlib import pyplot as plt
 from tqdm import tqdm
+from typing import Union
 
 import networkx as nx
 import pandas as pd
+
+colors = [
+          'crimson', 'cyan',
+          'darkblue', 'darkcyan', 'darkgoldenrod',
+          'darkgray', 'darkgreen', 'darkkhaki',
+          'darkmagenta', 'darkolivegreen', 'darkorange',
+          'darkorchid', 'darkred', 'darksalmon',
+          'darkseagreen', 'darkslateblue', 'darkslategray',
+          'darkturquoise', 'darkviolet', 'deeppink',
+          'deepskyblue', 'dimgray', 'dodgerblue',
+          'firebrick', 'floralwhite', 'forestgreen',
+          'fuchsia', 'gainsboro', 'ghostwhite',
+          'gold', 'goldenrod', 'gray',
+          'green', 'greenyellow', 'honeydew',
+          'hotpink', 'indianred', 'indigo',
+          'ivory', 'khaki', 'lavender',
+          'lavenderblush', 'lawngreen', 'lemonchiffon',
+          'lightblue', 'lightcoral', 'lightcyan',
+          'lightgoldenrodyellow', 'lightgreen', 'lightgray',
+          'lightpink', 'lightsalmon', 'lightseagreen',
+          'lightskyblue', 'lightslategray', 'lightsteelblue',
+          'lightyellow', 'lime', 'limegreen',
+          'linen', 'magenta', 'maroon',
+          'mediumaquamarine', 'mediumblue', 'mediumorchid',
+          'mediumpurple', 'mediumseagreen', 'mediumslateblue',
+          'mediumspringgreen', 'mediumturquoise', 'mediumvioletred',
+          'midnightblue', 'mintcream', 'mistyrose',
+          'moccasin', 'navajowhite', 'navy',
+          'oldlace', 'olive', 'olivedrab',
+          'orange', 'orangered', 'orchid',
+          'palegoldenrod', 'palegreen', 'paleturquoise',
+          'palevioletred', 'papayawhip', 'peachpuff',
+          'peru', 'pink', 'plum',
+          'powderblue', 'purple', 'red',
+          'rosybrown', 'royalblue', 'saddlebrown',
+          'salmon', 'sandybrown', 'seagreen',
+          'seashell', 'sienna', 'silver',
+          'skyblue', 'slateblue', 'slategray',
+          'snow', 'springgreen', 'steelblue',
+          'tan', 'teal', 'thistle',
+          'tomato', 'turquoise', 'violet',
+          'wheat', 'white', 'whitesmoke',
+          'yellow', 'yellowgreen'
+          ]
 
 
 class Point:
@@ -20,29 +65,6 @@ class Point:
 
     def __hash__(self):
         return hash(self.coord)
-
-    # endregion
-
-
-class RailwayNetContainer(dict):
-
-    # region Construction
-
-    def __init__(self, data: pd.DataFrame):
-        self.raw_data = data
-        self.countries_sorted = data.iso3.value_counts().keys().to_list()
-        super(RailwayNetContainer, self).__init__(zip(self.countries_sorted, (None for _ in self.countries_sorted)))
-
-    # endregion
-
-    # region PublicMethods
-
-    def get_net(self, iso3: str):
-        if iso3 in self.countries_sorted:
-            if self[iso3] is None:
-                self[iso3] = RailwayNet(self.raw_data, iso3)
-            return self[iso3]
-        return None
 
     # endregion
 
@@ -67,46 +89,50 @@ class RailwayNet(nx.Graph):
                 if (a != b) and \
                         (a.lat != b.lat or a.lon != b.lon):
                     self.add_edge(a, b)
+
+        self.biggest_component = self.subgraph(max(nx.connected_components(self), key=len))
+
     # endregion
 
     # region PublicMethods
 
-    def draw(self, size: tuple[int, int], show_components: bool = False):
+    def draw(self, size: tuple[int, int] = (20, 10, ), show_components: bool = False):
         """ function which draws train railways graph """
 
         plt.figure(figsize=size)
 
+        node_size = 0
+        pos = dict(zip(self.nodes, (node.coord for node in self.nodes)))
         if not show_components:
             nx.draw(
                 self,
                 nodelist=self.nodes,
-                node_size=[0 for v in self.nodes],
-                pos=dict(zip(self.nodes, (node.coord for node in self.nodes)))
+                node_size=node_size,
+                pos=pos,
             )
         else:
             components = sorted(nx.connected_components(self), key=len, reverse=True)[:20]
-            components_number = nx.number_connected_components(self)
-            if components_number > 20:
-                components_number = 20
 
             for index, component in enumerate(tqdm(components)):
                 nx.draw(
                     self.subgraph(component),
                     nodelist=self.nodes,
-                    node_size=[0 for v in self.nodes],
-                    pos=dict(zip(self.nodes, (node.coord for node in self.nodes))),
-                    edge_color=(index / components_number, index / 2 / components_number, index / 3 / components_number, )
+                    node_size=node_size,
+                    pos=pos,
+                    edge_color=colors[index % (len(colors))]
                 )
         plt.show()
 
-    def __str__(self):
+    def describe(self) -> None:
         res = ""
-        res += f"     nodes: {nx.number_of_nodes(self)}\n"
-        res += f"     edges: {nx.number_of_edges(self)}\n"
-        res += f"components: {nx.number_connected_components(self)}\n"
-        res += f" connected: {nx.is_connected(self)}\n"
+        res += f"                   nodes: {nx.number_of_nodes(self)}\n"
+        res += f"                   edges: {nx.number_of_edges(self)}\n"
+        res += f"              components: {nx.number_connected_components(self)}\n"
+        res += f"               connected: {nx.is_connected(self)}\n"
+        res += f"  biggest component part: {nx.number_of_nodes(self.biggest_component)/nx.number_of_nodes(self)}\n"
+        res += f" small-world coefficient: {nx.omega(self)}\n"
 
-        return res
+        print(res)
 
     # endregion
 
@@ -126,5 +152,28 @@ class RailwayNet(nx.Graph):
             lat.append(float(lon_lat_pair.strip().split()[1].strip("()")))
 
         return lon, lat
+
+    # endregion
+
+
+class RailwayNetContainer(dict):
+
+    # region Construction
+
+    def __init__(self, data: pd.DataFrame):
+        self.raw_data = data
+        self.countries_sorted = data.iso3.value_counts().keys().to_list()
+        super(RailwayNetContainer, self).__init__(zip(self.countries_sorted, (None for _ in self.countries_sorted)))
+
+    # endregion
+
+    # region PublicMethods
+
+    def get_net(self, iso3: str) -> Union[RailwayNet, None]:
+        if iso3 in self.countries_sorted:
+            if self[iso3] is None:
+                self[iso3] = RailwayNet(self.raw_data, iso3)
+            return self[iso3]
+        return None
 
     # endregion

@@ -18,15 +18,11 @@ def main() -> None:
     container = init()
     g = container.get_net("USA")
 
-    g.draw((40, 20))
-    print(g)
+    g.draw(size=(40, 20), show_components=True)
+    g.describe()
 
 # endregion
-
-# region EntryPoint
 
 
 if __name__ == "__main__":
     main()
-
-# endregion
