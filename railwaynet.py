@@ -1,3 +1,5 @@
+from dis import dis
+from functools import reduce
 import matplotlib  
 matplotlib.use('Qt5Agg')
 
@@ -9,7 +11,7 @@ from geopy import distance
 import networkx as nx
 import pandas as pd
 
-colors = [
+COLORS = [
           'crimson', 'cyan',
           'darkblue', 'darkcyan', 'darkgoldenrod',
           'darkgray', 'darkgreen', 'darkkhaki',
@@ -79,22 +81,24 @@ class RailwayNet(nx.Graph):
 
     def __init__(self, data: pd.DataFrame = None, iso3: str = None):
         super(RailwayNet, self).__init__()
-        if data is None:
-            return
+        if data is not None:
+            country_condition = True if iso3 is None else data.iso3 == iso3
+            for trail in data[country_condition]['shape']:
+                lat, lon = RailwayNet.__get_coordinates_from_string(trail)
+                self.add_node(Point(lon[0], lat[0]), iso3=iso3)
+                for i in range(len(lat) - 1):
+                    b = Point(lon[i + 1], lat[i + 1])
+                    a = Point(lon[i], lat[i])
+                    self.add_node(b)
+                    if a.lat != b.lat or a.lon != b.lon:
+                        self.add_edge(
+                                a,
+                                b,
+                                weight=distance.distance(a.coord_reverse, b.coord_reverse).km,
+                                iso3=iso3
+                            )
 
-        country_condition = True if iso3 is None else data.iso3 == iso3
-        for trail in data[country_condition]['shape']:
-            lat, lon = RailwayNet.__get_coordinates_from_string(trail)
-            self.add_node(Point(lon[0], lat[0]))
-            for i in range(len(lat) - 1):
-                b = Point(lon[i + 1], lat[i + 1])
-                a = Point(lon[i], lat[i])
-                self.add_node(b)
-                if (a != b) and \
-                        (a.lat != b.lat or a.lon != b.lon):
-                    self.add_edge(a, b, weight=distance.distance(a.coord_reverse, b.coord_reverse).km)
-
-        self.biggest_component = self.subgraph(max(nx.connected_components(self), key=len))
+        self.biggest_component = self if data is None else self.subgraph(max(nx.connected_components(self), key=len))
 
     # endregion
 
@@ -107,10 +111,12 @@ class RailwayNet(nx.Graph):
 
         node_size = 0
         pos = dict(zip(self.nodes, (node.coord for node in self.nodes)))
+        colors = [COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u,v in self.edges]
         if not show_components:
             nx.draw(
                 self,
-                nodelist=self.nodes,
+                edgelist=self.edges,
+                edge_color=colors,
                 node_size=node_size,
                 pos=pos,
             )
@@ -123,7 +129,7 @@ class RailwayNet(nx.Graph):
                     nodelist=self.nodes,
                     node_size=node_size,
                     pos=pos,
-                    edge_color=colors[index % (len(colors))]
+                    edge_color=COLORS[index % (len(colors))]
                 )
         plt.show()
 
@@ -182,5 +188,11 @@ class RailwayNetContainer(dict):
                 self[iso3] = RailwayNet(self.raw_data, iso3)
             return self[iso3]
         return None
+
+    def get_nets(self, iso3_lst: list[str]) -> Union[RailwayNet, None]:
+        res = RailwayNet()
+
+        res = reduce(nx.compose, [self.get_net(iso3) for iso3 in iso3_lst if iso3 in self.countries_sorted], res)
+        return res if nx.number_of_nodes(res) > 0 else None
 
     # endregion

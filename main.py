@@ -16,9 +16,41 @@ def init_world() -> RailwayNetContainer:
 
 def main() -> None:
     container = init_world()
-    g = container.get_net("UKR")
 
-    g.draw(size=(40, 20), show_components=True)
+    usa_key = "USA"
+    europe_key = [
+            "AUT",
+            "BEL",
+            "BGR",
+            "HRV",
+            "CZE",
+            "DNK",
+            "EST",
+            "FIN",
+            "FRA",
+            "DEU",
+            "GRC",
+            "HUN",
+            "ITA",
+            "LVA",
+            "LTU",
+            "LUX",
+            "NLD",
+            "POL",
+            "PRT",
+            "ROU",
+            "SVK",
+            "SVN",
+            "ESP",
+            "SVE",
+            "UKR",
+            "BLR"
+    ]
+    test_key = ["UKR", "BLR", "POL"]
+
+    g = container.get_nets(europe_key)
+
+    g.draw(size=(40, 20))
     g.draw_degree_histogram()
 
     g.describe()
