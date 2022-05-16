@@ -1,15 +1,14 @@
-from dis import dis
-from functools import reduce
-import matplotlib  
-matplotlib.use('Qt5Agg')
-
+from functools import reduce, cache
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from typing import Union
 from geopy import distance
 
+import matplotlib
 import networkx as nx
 import pandas as pd
+
+matplotlib.use('Qt5Agg')
 
 COLORS = [
           'crimson', 'cyan',
@@ -98,11 +97,13 @@ class RailwayNet(nx.Graph):
                                 iso3=iso3
                             )
 
-        self.biggest_component = self if data is None else self.subgraph(max(nx.connected_components(self), key=len))
-
     # endregion
 
     # region PublicMethods
+
+    @cache
+    def get_biggest_component(self):
+        return self.subgraph(max(nx.connected_components(self), key=len))
 
     def draw(self, size: tuple[int, int] = (20, 10, ), show_components: bool = False):
         """ function which draws train railways graph """
@@ -111,12 +112,12 @@ class RailwayNet(nx.Graph):
 
         node_size = 0
         pos = dict(zip(self.nodes, (node.coord for node in self.nodes)))
-        colors = [COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u,v in self.edges]
         if not show_components:
+            edge_colors = [COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.edges]
             nx.draw(
                 self,
                 edgelist=self.edges,
-                edge_color=colors,
+                edge_color=edge_colors,
                 node_size=node_size,
                 pos=pos,
             )
@@ -124,12 +125,13 @@ class RailwayNet(nx.Graph):
             components = sorted(nx.connected_components(self), key=len, reverse=True)[:20]
 
             for index, component in enumerate(tqdm(components)):
+                edge_colors = COLORS[index % (len(COLORS))]
                 nx.draw(
                     self.subgraph(component),
                     nodelist=self.nodes,
                     node_size=node_size,
                     pos=pos,
-                    edge_color=COLORS[index % (len(colors))]
+                    edge_color=edge_colors
                 )
         plt.show()
 
@@ -143,7 +145,9 @@ class RailwayNet(nx.Graph):
         res += f"                   edges: {nx.number_of_edges(self)}\n"
         res += f"              components: {nx.number_connected_components(self)}\n"
         res += f"               connected: {nx.is_connected(self)}\n"
-        res += f"  biggest component part: {nx.number_of_nodes(self.biggest_component)/nx.number_of_nodes(self)}\n"
+
+        biggest_component_part = nx.number_of_nodes(self.get_biggest_component()) / nx.number_of_nodes(self)
+        res += f"  biggest component part: {biggest_component_part:.6}\n"
 
         print(res)
 
@@ -192,7 +196,7 @@ class RailwayNetContainer(dict):
     def get_nets(self, iso3_lst: list[str]) -> Union[RailwayNet, None]:
         res = RailwayNet()
 
-        res = reduce(nx.compose, [self.get_net(iso3) for iso3 in iso3_lst if iso3 in self.countries_sorted], res)
+        res = reduce(nx.compose, tqdm([self.get_net(iso3) for iso3 in iso3_lst if iso3 in self.countries_sorted]), res)
         return res if nx.number_of_nodes(res) > 0 else None
 
     # endregion
