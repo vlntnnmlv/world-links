@@ -78,7 +78,7 @@ class RailwayNet(nx.Graph):
 
     # region Construction
 
-    def __init__(self, data: pd.DataFrame = None, iso3: str = None):
+    def __init__(self, data: pd.DataFrame = None, capital: Point = None, iso3: str = None):
         super(RailwayNet, self).__init__()
         if data is not None:
             country_condition = True if iso3 is None else data.iso3 == iso3
@@ -93,7 +93,8 @@ class RailwayNet(nx.Graph):
                         self.add_edge(
                                 a,
                                 b,
-                                weight=distance.distance(a.coord_reverse, b.coord_reverse).km,
+                                distance=distance.distance(a.coord_reverse, b.coord_reverse).km,
+                                cost=1 / distance.distance(a.coord_reverse, capital.coord_reverse)
                                 iso3=iso3
                             )
 
@@ -101,7 +102,7 @@ class RailwayNet(nx.Graph):
 
     # region PublicMethods
 
-    @cache
+    @lru_cache(maxsize=None)
     def get_biggest_component(self):
         return self.subgraph(max(nx.connected_components(self), key=len))
 
