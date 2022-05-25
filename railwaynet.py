@@ -1,4 +1,4 @@
-from functools import reduce, cache
+from functools import reduce, lru_cache
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 from typing import Union
@@ -94,7 +94,7 @@ class RailwayNet(nx.Graph):
                                 a,
                                 b,
                                 distance=distance.distance(a.coord_reverse, b.coord_reverse).km,
-                                cost=1 / distance.distance(a.coord_reverse, capital.coord_reverse)
+                                cost=0 if capital is None else 1 / distance.distance(a.coord_reverse, capital.coord_reverse),
                                 iso3=iso3
                             )
 
