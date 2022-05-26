@@ -7,12 +7,11 @@ def init_world() -> RailwayNetContainer:
     data_path = "./data/trains.csv"
     data = pd.read_csv(data_path, sep=',', dtype=str)
 
-    return RailwayNetContainer(data)
+    return RailwayNetContainer(data, pd.read_csv("./data/country_capitals"))
 
 # endregion
 
 # region Main
-
 
 def main() -> None:
     container = init_world()
@@ -44,14 +43,14 @@ def main() -> None:
             "ESP",
             "SVE",
             "UKR",
-            "BLR"
+            "BLR",
+            "RUS"
     ]
     test_key = ["UKR", "BLR", "POL"]
 
-    g = container.get_nets(europe_key)
+    g = container.get_nets(test_key)
 
     g.draw(size=(40, 20))
-    g.draw_degree_histogram()
 
     g.describe()
 

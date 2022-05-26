@@ -7,8 +7,11 @@ from geopy import distance
 import matplotlib
 import networkx as nx
 import pandas as pd
+import pycountry
 
 matplotlib.use('Qt5Agg')
+
+# region Constants
 
 COLORS = [
           'crimson', 'cyan',
@@ -54,6 +57,9 @@ COLORS = [
           'yellow', 'yellowgreen'
           ]
 
+# endregion
+
+# region Types
 
 class Point:
 
@@ -73,7 +79,6 @@ class Point:
 
     # endregion
 
-
 class RailwayNet(nx.Graph):
 
     # region Construction
@@ -81,8 +86,8 @@ class RailwayNet(nx.Graph):
     def __init__(self, data: pd.DataFrame = None, capital: Point = None, iso3: str = None):
         super(RailwayNet, self).__init__()
         if data is not None:
-            country_condition = True if iso3 is None else data.iso3 == iso3
-            for trail in data[country_condition]['shape']:
+            data_filtered = data if iso3 is None else data[data.iso3 == iso3]
+            for trail in data_filtered['shape']:
                 lat, lon = RailwayNet.__get_coordinates_from_string(trail)
                 self.add_node(Point(lon[0], lat[0]), iso3=iso3)
                 for i in range(len(lat) - 1):
@@ -136,6 +141,37 @@ class RailwayNet(nx.Graph):
                 )
         plt.show()
 
+    def draw_components(self, size: tuple[int, int] = (20, 10, )):
+        self.__draw(
+            size=size,
+            edge_colors=[COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.edges],
+            node_size=0
+            )
+
+    def __draw(
+        self,
+        size: tuple[int, int] = (20, 10),
+        edge_colors: list[str] | list[tuple[float, float, float]] | str | tuple[float, float, float] = None,
+        node_colors: list[str] | list[tuple[float, float, float]] | str | tuple[float, float, float] = None,
+        node_size: int = None,
+        width: int = None
+    ):
+        pos = dict(zip(self.nodes, (node.coord for node in self.nodes)))
+        
+        plt.figure(figsize=size)
+
+        nx.draw(
+            self,
+            edgelist=self.edges,
+            edge_color=edge_colors if edge_colors is not None else 'black',
+            nodelist=self.nodes,
+            node_color=node_colors if node_colors is not None else 'black',
+            node_size=node_size if node_size is not None else 2,
+            width=width if width is not None else 1
+        )
+
+        plt.show()
+    
     def draw_degree_histogram(self):
         plt.hist(nx.degree_histogram(self))
         plt.show()
@@ -173,14 +209,13 @@ class RailwayNet(nx.Graph):
 
     # endregion
 
-
 class RailwayNetContainer(dict):
 
     # region Construction
-
-    def __init__(self, data: pd.DataFrame):
+    def __init__(self, data: pd.DataFrame, capitals_data: pd.DataFrame):
         self.raw_data = data
         self.countries_sorted = data.iso3.value_counts().keys().to_list()
+        
         super(RailwayNetContainer, self).__init__(zip(self.countries_sorted, (None for _ in self.countries_sorted)))
 
     # endregion
@@ -190,14 +225,28 @@ class RailwayNetContainer(dict):
     def get_net(self, iso3: str) -> Union[RailwayNet, None]:
         if iso3 in self.countries_sorted:
             if self[iso3] is None:
-                self[iso3] = RailwayNet(self.raw_data, iso3)
+                self[iso3] = RailwayNet(self.raw_data, iso3=iso3)
             return self[iso3]
         return None
 
-    def get_nets(self, iso3_lst: list[str]) -> Union[RailwayNet, None]:
+    def get_nets(self, iso3_lst: list[str]) -> RailwayNet | None:
         res = RailwayNet()
 
         res = reduce(nx.compose, tqdm([self.get_net(iso3) for iso3 in iso3_lst if iso3 in self.countries_sorted]), res)
         return res if nx.number_of_nodes(res) > 0 else None
 
     # endregion
+
+# endregion
+
+# region Functions
+
+def default_setup() -> RailwayNetContainer:
+    data_path = "./data/trains.csv"
+    capitals_data_path = "./data/country_capitals.csv"
+    data = pd.read_csv(data_path, sep=',', dtype=str)
+    capitals_data = pd.read_csv(capitals_data_path, sep=',').dropna()
+    
+    return RailwayNetContainer(data=data, capitals_data=capitals_data), data, capitals_data
+
+# endregion
