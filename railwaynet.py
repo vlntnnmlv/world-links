@@ -1,7 +1,7 @@
 from functools import reduce, lru_cache
 from matplotlib import pyplot as plt
+from statistics import mean
 from tqdm import tqdm
-from typing import Union
 from geopy import distance
 
 import matplotlib
@@ -71,6 +71,17 @@ class Point:
         self.coord = (lon, lat)
         self.coord_reverse = (lat, lon)
 
+    # endregion
+
+    # region PublicMethods
+    
+    def distance(self, other) -> float:
+        return distance.distance(self.coord_reverse, other.coord_reverse).km
+    
+    # enderegions
+
+    # region OverloadMethods
+
     def __eq__(self, other):
         return self.lat == other.lat and self.lon == other.lon
 
@@ -83,9 +94,15 @@ class RailwayNet(nx.Graph):
 
     # region Construction
 
-    def __init__(self, data: pd.DataFrame = None, capital: Point = None, iso3: str = None):
+    def __init__(self, data: pd.DataFrame = None, capitals: dict[str, Point] = None, max_speed: float = None, iso3: str = None):
         super(RailwayNet, self).__init__()
+
+        self.countries = set()
+
         if data is not None:
+            if iso3 is not None:
+                self.countries.add(iso3)
+
             data_filtered = data if iso3 is None else data[data.iso3 == iso3]
             for trail in data_filtered['shape']:
                 lat, lon = RailwayNet.__get_coordinates_from_string(trail)
@@ -93,13 +110,14 @@ class RailwayNet(nx.Graph):
                 for i in range(len(lat) - 1):
                     b = Point(lon[i + 1], lat[i + 1])
                     a = Point(lon[i], lat[i])
-                    self.add_node(b)
+                    self.add_node(b, iso3=iso3)
                     if a.lat != b.lat or a.lon != b.lon:
                         self.add_edge(
                                 a,
                                 b,
-                                distance=distance.distance(a.coord_reverse, b.coord_reverse).km,
-                                cost=0 if capital is None else distance.distance(a.coord_reverse, capital.coord_reverse),
+                                distance=a.distance(b),
+                                centrality=a.distance(capitals[iso3]),
+                                speed=80 if max_speed is None else max_speed,
                                 iso3=iso3
                             )
 
@@ -111,67 +129,62 @@ class RailwayNet(nx.Graph):
     def get_biggest_component(self):
         return self.subgraph(max(nx.connected_components(self), key=len))
 
-    def draw(self, size: tuple[int, int] = (20, 10, ), show_components: bool = False):
-        """ function which draws train railways graph """
+    def draw_countries(self, size: tuple[int, int] = (20, 10, )):
+        plt.figure(figsize=size)
+        nx.draw(
+                self,
+                edgelist=self.edges,
+                edge_color=[COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.edges],
+                node_size=0,
+                pos=dict(zip(self.nodes, (node.coord for node in self.nodes)))
+            )
+        plt.show()
+    
+    def draw_components(self, size: tuple[int, int] = (20, 10)):
+        plt.figure(figsize=size)
+        components = sorted(nx.connected_components(self), key=len, reverse=True)[:20]
+        for index, component in enumerate(tqdm(components)):
+            subgraph = self.subgraph(component)
+            nx.draw(
+                subgraph,
+                edgelist=subgraph.edges,
+                edge_color=COLORS[index % (len(COLORS))],
+                node_size=0,
+                pos=dict(zip(subgraph.nodes, (node.coord for node in subgraph.nodes)))
+            )
+        plt.show()
+
+    def draw_by_attribute(self, attr: str, size: tuple[int, int] = (20, 10), separate_countries: bool = False):
+
+        def green2red(ratio: float) -> tuple[float, float, float]:
+            return (ratio, 1 - ratio, 0)
 
         plt.figure(figsize=size)
 
-        node_size = 0
-        pos = dict(zip(self.nodes, (node.coord for node in self.nodes)))
-        if not show_components:
-            edge_colors = [COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.edges]
-            nx.draw(
-                self,
-                edgelist=self.edges,
-                edge_color=edge_colors,
-                node_size=node_size,
-                pos=pos,
-            )
-        else:
-            components = sorted(nx.connected_components(self), key=len, reverse=True)[:20]
-
-            for index, component in enumerate(tqdm(components)):
-                edge_colors = COLORS[index % (len(COLORS))]
+        if separate_countries:
+            for country in self.countries:
+                subgraph = self.subgraph([node for node in self.nodes if self.nodes[node]['iso3'] == country])
+                attr_list = [self[u][v][attr] for u,v in subgraph.edges]
+                attr_max  = max(attr_list)
                 nx.draw(
-                    self.subgraph(component),
-                    nodelist=self.nodes,
-                    node_size=node_size,
-                    pos=pos,
-                    edge_color=edge_colors
+                        subgraph,
+                        edgelist=subgraph.edges,
+                        edge_color=[green2red(attr/attr_max) for attr in attr_list],
+                        node_size=0,
+                        pos=dict(zip(subgraph.nodes, (node.coord for node in subgraph.nodes)))
+                    )
+        else:
+            attr_list = [self[u][v][attr] for u,v in self.edges]
+            attr_max  = max(attr_list)
+            nx.draw(
+                    self,
+                    edgelist=self.edges,
+                    edge_color=[green2red(attr/attr_max) for attr in attr_list],
+                    node_size=0,
+                    pos=dict(zip(self.nodes, (node.coord for node in self.nodes)))
                 )
         plt.show()
 
-    def draw_components(self, size: tuple[int, int] = (20, 10, )):
-        self.__draw(
-            size=size,
-            edge_colors=[COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.edges],
-            node_size=0
-            )
-
-    def __draw(
-        self,
-        size: tuple[int, int] = (20, 10),
-        edge_colors: list[str] | list[tuple[float, float, float]] | str | tuple[float, float, float] = None,
-        node_colors: list[str] | list[tuple[float, float, float]] | str | tuple[float, float, float] = None,
-        node_size: int = None,
-        width: int = None
-    ):
-        pos = dict(zip(self.nodes, (node.coord for node in self.nodes)))
-        
-        plt.figure(figsize=size)
-
-        nx.draw(
-            self,
-            edgelist=self.edges,
-            edge_color=edge_colors if edge_colors is not None else 'black',
-            nodelist=self.nodes,
-            node_color=node_colors if node_colors is not None else 'black',
-            node_size=node_size if node_size is not None else 2,
-            width=width if width is not None else 1
-        )
-
-        plt.show()
-    
     def draw_degree_histogram(self):
         plt.hist(nx.degree_histogram(self))
         plt.show()
@@ -207,18 +220,44 @@ class RailwayNet(nx.Graph):
 
         return lon, lat
 
+    @staticmethod
+    def __calculate_centrality(p: Point, iso3: str, capitals: dict[str, Point]) -> float:
+        nearest3capitals = dict()
+        for country, capital in capitals.items():
+            dist = p.distance(capital)
+            if (len(nearest3capitals) < 3):
+                nearest3capitals[country] = dist
+            elif any([p.distance(capital) < d for d in nearest3capitals.values()]):
+                max_dist_country = max(nearest3capitals, key=nearest3capitals.get)
+                del nearest3capitals[max_dist_country]
+                nearest3capitals[country] = dist
+
+        if (all([dist > 500 for dist in nearest3capitals.values()])):
+            return p.distance(capitals[iso3])
+
+        return mean([dist for dist in nearest3capitals.values() if dist <= 500])
+
     # endregion
 
 class RailwayNetContainer(dict):
 
     # region Construction
-    def __init__(self, data: pd.DataFrame, capitals_data: pd.DataFrame):
+
+    def __init__(self, data: pd.DataFrame, capitals_data: pd.DataFrame, speed_data: pd.DataFrame):
         self.raw_data = data
         self.countries_sorted = data.iso3.value_counts().keys().to_list()
 
         self.capitals_data = capitals_data
         self.capitals_data = self.capitals_data[self.capitals_data.CountryCode.isin(self.countries_sorted)].reset_index().drop(columns=["index"])
         self.countries_sorted = list(filter(lambda c: c in list(self.capitals_data.CountryCode), self.countries_sorted))
+        self.capitals_data = dict(
+            zip(
+                list(self.capitals_data.CountryCode),
+                [self.get_capital(iso3) for iso3 in self.capitals_data.CountryCode]
+                )
+            )
+
+        self.speed_data = speed_data
 
         super(RailwayNetContainer, self).__init__(zip(self.countries_sorted, (None for _ in self.countries_sorted)))
 
@@ -226,22 +265,35 @@ class RailwayNetContainer(dict):
 
     # region PublicMethods
 
-    def get_net(self, iso3: str) -> Union[RailwayNet, None]:
+    def get_net(self, iso3: str) -> RailwayNet | None:
         if iso3 in self.countries_sorted:
             if self[iso3] is None:
-                self[iso3] = RailwayNet(self.raw_data, capital=self.get_capital(iso3=iso3), iso3=iso3)
+                self[iso3] = RailwayNet(
+                    self.raw_data,
+                    capitals=self.capitals_data,
+                    max_speed=self.get_speed(iso3=iso3),
+                    iso3=iso3
+                    )
             return self[iso3]
         return None
 
     def get_nets(self, iso3_lst: list[str]) -> RailwayNet | None:
         res = RailwayNet()
 
-        res = reduce(nx.compose, tqdm([self.get_net(iso3) for iso3 in iso3_lst if iso3 in self.countries_sorted]), res)
+        def compose(G, H):
+            C = nx.compose(G, H)
+            C.countries = G.countries.union(H.countries)
+            return C
+
+        res = reduce(compose, tqdm([self.get_net(iso3) for iso3 in iso3_lst if iso3 in self.countries_sorted]), res)
         return res if nx.number_of_nodes(res) > 0 else None
 
     def get_capital(self, iso3: str) -> Point:
         row = self.capitals_data[self.capitals_data.CountryCode == iso3].iloc[0]
         return Point(row.CapitalLatitude, row.CapitalLongitude)
+
+    def get_speed(self, iso3: str) -> float:
+        return float(self.speed_data[self.speed_data.CountryCode == iso3].iloc[0].MaximumTrainSpeed)
 
     # endregion
 
@@ -252,10 +304,50 @@ class RailwayNetContainer(dict):
 def default_setup() -> RailwayNetContainer:
     data_path = "./data/trains.csv"
     capitals_data_path = "./data/country_capitals.csv"
+    speed_data_path="./data/train_speed.csv"
+
     data = pd.read_csv(data_path, sep=',', dtype=str)[["iso3", "shape"]]
+
     capitals_data = pd.read_csv(capitals_data_path, sep=',').dropna()[["CountryCode", "CapitalLatitude", "CapitalLongitude"]]
     capitals_data.CountryCode = capitals_data.CountryCode.apply(lambda c : pycountry.countries.get(alpha_2 = c).alpha_3 if pycountry.countries.get(alpha_2 = c) is not None else None)
 
-    return RailwayNetContainer(data=data, capitals_data=capitals_data), data, capitals_data
+    speed_data = pd.read_csv(speed_data_path, sep=',')
+    speed_data['CountryCode'] = speed_data.CountryName.apply(lambda name: pycountry.countries.search_fuzzy(name)[0].alpha_3)
+    speed_data = speed_data.drop(columns=["CountryName"])
+
+    return RailwayNetContainer(data=data, capitals_data=capitals_data, speed_data=speed_data), data, capitals_data
+
+def test_graph() -> RailwayNet:
+    c, _, _ = default_setup()
+    europe_key = [
+            "AUT",
+            "BEL",
+            "BGR",
+            "HRV",
+            "CZE",
+            "DNK",
+            "EST",
+            "FIN",
+            "FRA",
+            "DEU",
+            "GRC",
+            "HUN",
+            "ITA",
+            "LVA",
+            "LTU",
+            "LUX",
+            "NLD",
+            "POL",
+            "PRT",
+            "ROU",
+            "SVK",
+            "SVN",
+            "ESP",
+            "SVE",
+            "UKR",
+            "BLR",
+            "RUS"
+    ]
+    return c.get_nets(["UKR", "POL", "BLR"])
 
 # endregion
