@@ -99,7 +99,7 @@ class RailwayNet(nx.Graph):
                                 a,
                                 b,
                                 distance=distance.distance(a.coord_reverse, b.coord_reverse).km,
-                                cost=0 if capital is None else 1 / distance.distance(a.coord_reverse, capital.coord_reverse),
+                                cost=0 if capital is None else distance.distance(a.coord_reverse, capital.coord_reverse),
                                 iso3=iso3
                             )
 
@@ -215,7 +215,11 @@ class RailwayNetContainer(dict):
     def __init__(self, data: pd.DataFrame, capitals_data: pd.DataFrame):
         self.raw_data = data
         self.countries_sorted = data.iso3.value_counts().keys().to_list()
-        
+
+        self.capitals_data = capitals_data
+        self.capitals_data = self.capitals_data[self.capitals_data.CountryCode.isin(self.countries_sorted)].reset_index().drop(columns=["index"])
+        self.countries_sorted = list(filter(lambda c: c in list(self.capitals_data.CountryCode), self.countries_sorted))
+
         super(RailwayNetContainer, self).__init__(zip(self.countries_sorted, (None for _ in self.countries_sorted)))
 
     # endregion
@@ -225,7 +229,7 @@ class RailwayNetContainer(dict):
     def get_net(self, iso3: str) -> Union[RailwayNet, None]:
         if iso3 in self.countries_sorted:
             if self[iso3] is None:
-                self[iso3] = RailwayNet(self.raw_data, iso3=iso3)
+                self[iso3] = RailwayNet(self.raw_data, capital=self.get_capital(iso3=iso3), iso3=iso3)
             return self[iso3]
         return None
 
@@ -234,6 +238,10 @@ class RailwayNetContainer(dict):
 
         res = reduce(nx.compose, tqdm([self.get_net(iso3) for iso3 in iso3_lst if iso3 in self.countries_sorted]), res)
         return res if nx.number_of_nodes(res) > 0 else None
+
+    def get_capital(self, iso3: str) -> Point:
+        row = self.capitals_data[self.capitals_data.CountryCode == iso3].iloc[0]
+        return Point(row.CapitalLatitude, row.CapitalLongitude)
 
     # endregion
 
@@ -244,9 +252,10 @@ class RailwayNetContainer(dict):
 def default_setup() -> RailwayNetContainer:
     data_path = "./data/trains.csv"
     capitals_data_path = "./data/country_capitals.csv"
-    data = pd.read_csv(data_path, sep=',', dtype=str)
-    capitals_data = pd.read_csv(capitals_data_path, sep=',').dropna()
-    
+    data = pd.read_csv(data_path, sep=',', dtype=str)[["iso3", "shape"]]
+    capitals_data = pd.read_csv(capitals_data_path, sep=',').dropna()[["CountryCode", "CapitalLatitude", "CapitalLongitude"]]
+    capitals_data.CountryCode = capitals_data.CountryCode.apply(lambda c : pycountry.countries.get(alpha_2 = c).alpha_3 if pycountry.countries.get(alpha_2 = c) is not None else None)
+
     return RailwayNetContainer(data=data, capitals_data=capitals_data), data, capitals_data
 
 # endregion
