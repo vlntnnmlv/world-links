@@ -14,7 +14,7 @@ def init_world() -> RailwayNetContainer:
 # region Main
 
 def main() -> None:
-    container = init_world()
+    container, data, capitals_data = default_setup()
 
     usa_key = "USA"
     europe_key = [
@@ -44,15 +44,17 @@ def main() -> None:
             "SVE",
             "UKR",
             "BLR",
-            "RUS"
+            "RUS",
+            "GBR"
     ]
-    test_key = ["UKR", "BLR", "POL"]
+    # test_key = ["UKR", "BLR", "POL"]
 
-    g = container.get_nets(test_key)
+    # g = container.get_nets(test_key)
+    # g.draw_by_attribute("centrality")
 
-    g.draw(size=(40, 20))
+    container.draw_country_graph()
 
-    g.describe()
+    # g.describe()
 
 # endregion
 
