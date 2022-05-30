@@ -1,60 +1,29 @@
 from railwaynet import *
-
-# region WorkFlow
-
-
-def init_world() -> RailwayNetContainer:
-    data_path = "./data/trains.csv"
-    data = pd.read_csv(data_path, sep=',', dtype=str)
-
-    return RailwayNetContainer(data, pd.read_csv("./data/country_capitals"))
-
-# endregion
-
+from editor import *
 # region Main
 
 def main() -> None:
-    container, data, capitals_data = default_setup()
+    container, _, _ = default_setup()
 
-    usa_key = "USA"
-    europe_key = [
-            "AUT",
-            "BEL",
-            "BGR",
-            "HRV",
-            "CZE",
-            "DNK",
-            "EST",
-            "FIN",
-            "FRA",
-            "DEU",
-            "GRC",
-            "HUN",
-            "ITA",
-            "LVA",
-            "LTU",
-            "LUX",
-            "NLD",
-            "POL",
-            "PRT",
-            "ROU",
-            "SVK",
-            "SVN",
-            "ESP",
-            "SVE",
-            "UKR",
-            "BLR",
-            "RUS",
-            "GBR"
-    ]
-    # test_key = ["UKR", "BLR", "POL"]
+    g = container.get_nets(["UKR"])
+    editor = Editor(g.get_points_dataframe())
+    editor.run()
+    # g = container.countries_graph
 
-    # g = container.get_nets(test_key)
-    # g.draw_by_attribute("centrality")
+    # frm = None
+    # to = None
+    # for node in g.nodes:
+    #     if g.nodes[node]['iso3'] == "RUS":
+    #         frm = node
+    #     if g.nodes[node]['iso3'] == "PRT":
+    #         to = node
 
-    container.draw_country_graph()
+    # path = nx.dijkstra_path(g, frm, to, "distance")
+    # p = g.subgraph(path)
 
-    # g.describe()
+    # nx.draw(g, edgelist=g.edges, node_size=0, pos=dict(zip(g.nodes, [node.coord for node in g.nodes])))
+    # nx.draw(p, edgelist=p.edges, edge_color='red', node_size=1, pos=dict(zip(p.nodes, [node.coord for node in p.nodes])))
+    # plt.show()
 
 # endregion
 

@@ -1,11 +1,9 @@
 from functools import reduce, lru_cache
-import random
 from matplotlib import pyplot as plt
-from statistics import mean
-from sklearn import neighbors
-from tqdm import tqdm
-from geopy import distance
 from rich.console import Console
+from geograph import GeoGraph, Point
+from statistics import mean
+from tqdm import tqdm
 
 import networkx as nx
 import pandas as pd
@@ -13,6 +11,7 @@ import matplotlib
 import contextlib
 import pycountry
 import pickle
+import random
 import bz2
 
 matplotlib.use('Qt5Agg')
@@ -74,38 +73,9 @@ PROGRESS_BAR_WIDTH = 100
 
 # endregion
 
-# region Types
+# region Types  
 
-class Point:
-
-    # region Construction
-
-    def __init__(self, lat: float, lon: float):
-        self.lat = lat
-        self.lon = lon
-        self.coord = (lon, lat)
-        self.coord_reverse = (lat, lon)
-
-    # endregion
-
-    # region PublicMethods
-    
-    def distance(self, other) -> float:
-        return distance.distance(self.coord_reverse, other.coord_reverse).km
-    
-    # endregion
-
-    # region OverloadMethods
-
-    def __eq__(self, other):
-        return self.lat == other.lat and self.lon == other.lon
-
-    def __hash__(self):
-        return hash(self.coord)
-
-    # endregion
-
-class RailwayNet(nx.Graph):
+class RailwayNet(GeoGraph):
 
     # region Construction
 
@@ -144,65 +114,37 @@ class RailwayNet(nx.Graph):
     def get_biggest_component(self):
         return self.subgraph(max(nx.connected_components(self), key=len))
 
-    def draw_countries(self, size: tuple[int, int] = (20, 10, )):
+    def get_points_dataframe(self):
+        points_dataframe = pd.DataFrame(
+            {
+                'lat':  [node.coord_reverse[0] for node in self.nodes],
+                'lon':  [node.coord_reverse[1] for node in self.nodes],
+                'iso3': [self.nodes[node]['iso3'] for node in self.nodes]
+            }
+        )
+        return points_dataframe
+
+    def draw_by_country(self, size: tuple[int, int] = (20, 10, ), ):
         plt.figure(figsize=size)
-        nx.draw(
-                self,
-                edgelist=self.edges,
-                edge_color=[COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.edges],
-                node_size=0,
-                pos=dict(zip(self.nodes, (node.coord for node in self.nodes)))
-            )
-        plt.show()
+        edge_color=[COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.edges]
+        self.draw(edge_color=edge_color, node_size=0)
     
-    def draw_components(self, size: tuple[int, int] = (20, 10)):
+    def draw_by_component(self, size: tuple[int, int] = (20, 10)):
         plt.figure(figsize=size)
         components = sorted(nx.connected_components(self), key=len, reverse=True)[:20]
         for index, component in enumerate(tqdm(components, desc=CALCULATING_COMPONENTS_MSG)):
-            subgraph = self.subgraph(component)
-            nx.draw(
-                subgraph,
-                edgelist=subgraph.edges,
-                edge_color=COLORS[index % (len(COLORS))],
-                node_size=0,
-                pos=dict(zip(subgraph.nodes, (node.coord for node in subgraph.nodes)))
-            )
-        plt.show()
+            self.subgraph(component).draw(edge_color=COLORS[index % (len(COLORS))], node_size=0)
 
-    def draw_by_attribute(self, attr: str, size: tuple[int, int] = (20, 10), separate_countries: bool = False):
+    def draw_by_attribute(self, attr: str, size: tuple[int, int] = (20, 10)):
 
         def green2red(ratio: float) -> tuple[float, float, float]:
             return (ratio, 1 - ratio, 0)
 
         plt.figure(figsize=size)
-
-        if separate_countries:
-            for country in self.countries:
-                subgraph = self.subgraph([node for node in self.nodes if self.nodes[node]['iso3'] == country])
-                attr_list = [self[u][v][attr] for u,v in subgraph.edges]
-                attr_max  = max(attr_list)
-                nx.draw(
-                        subgraph,
-                        edgelist=subgraph.edges,
-                        edge_color=[green2red(attr/attr_max) for attr in attr_list],
-                        node_size=0,
-                        pos=dict(zip(subgraph.nodes, (node.coord for node in subgraph.nodes)))
-                    )
-        else:
-            attr_list = [self[u][v][attr] for u,v in self.edges]
-            attr_max  = max(attr_list)
-            nx.draw(
-                    self,
-                    edgelist=self.edges,
-                    edge_color=[green2red(attr/attr_max) for attr in attr_list],
-                    node_size=0,
-                    pos=dict(zip(self.nodes, (node.coord for node in self.nodes)))
-                )
-        plt.show()
-
-    def draw_degree_histogram(self):
-        plt.hist(nx.degree_histogram(self))
-        plt.show()
+        attr_list = [self[u][v][attr] for u,v in self.edges]
+        min_attr = min(attr_list)
+        ratio_derivative = max(attr_list) - min_attr
+        self.draw(edge_color=[green2red((attr - min_attr)/ratio_derivative) for attr in attr_list], node_size=0)
 
     def describe(self) -> None:
         res = "\n"
@@ -237,7 +179,7 @@ class RailwayNet(nx.Graph):
 
     # endregion
 
-class CountryNet(nx.Graph):
+class CountryNet(GeoGraph):
 
     # region Construction
 
@@ -259,7 +201,7 @@ class CountryNet(nx.Graph):
 
     # endregion
 
-class RailwayNetContainer(dict):
+class RailwayNetManager(dict):
 
     # region Constants
 
@@ -272,7 +214,7 @@ class RailwayNetContainer(dict):
 
     def __init__(self, graph_data: pd.DataFrame, countries_data: pd.DataFrame):
         self.graph_data = graph_data
-        self.countries_data = RailwayNetContainer.__countries_dataframe2dict(countries_data)
+        self.countries_data = RailwayNetManager.__countries_dataframe2dict(countries_data)
 
         # sort countries by amount of railways in it
         self.countries_sorted = self.graph_data.iso3.value_counts().keys().to_list()
@@ -281,7 +223,7 @@ class RailwayNetContainer(dict):
         # if not found, calculate
         # then init dict with graph values
         
-        railway_nets = try_load_cached_file(RailwayNetContainer.CACHED_LIST_OF_NETS_PATH)
+        railway_nets = try_load_cached_file(RailwayNetManager.CACHED_LIST_OF_NETS_PATH)
         if railway_nets is None:
             railway_nets = [RailwayNet(
                                     graph_data=self.graph_data,
@@ -289,8 +231,8 @@ class RailwayNetContainer(dict):
                                     iso3=iso3
                                 ) for iso3 in tqdm(self.countries_sorted, desc=CALCULATING_GRAPHS_MSG)]
 
-            save_file_to_cache(railway_nets, RailwayNetContainer.CACHED_LIST_OF_NETS_PATH)
-        super(RailwayNetContainer, self).__init__(zip(self.countries_sorted, railway_nets))
+            save_file_to_cache(railway_nets, RailwayNetManager.CACHED_LIST_OF_NETS_PATH)
+        super(RailwayNetManager, self).__init__(zip(self.countries_sorted, railway_nets))
         self.full_graph = None
         self.full_graph = self.__get_full()
 
@@ -346,45 +288,25 @@ class RailwayNetContainer(dict):
         if recalculate_centrality:
             self.__calculate_centrality(res)
         return res
-    
-    def draw_country_graph(self, size: tuple[int, int] = (20, 10)):
-        plt.figure(figsize=size)
-        nx.draw(
-                self.full_graph,
-                edgelist=self.full_graph.edges,
-                edge_color=[COLORS[ord(self.full_graph[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.full_graph.edges],
-                node_size=0,
-                pos=dict(zip(self.full_graph.nodes, (node.coord for node in self.full_graph.nodes)))
-            )
-        nx.draw(
-                self.countries_graph,
-                edgelist=self.countries_graph.edges,
-                edge_color='red',
-                node_color=[COLORS[ord(self.countries_graph.nodes[u]['iso3'][0]) % len(COLORS)] for u in self.countries_graph.nodes],
-                node_size=2,
-                width=2,
-                pos=dict(zip(self.countries_graph.nodes, (node.coord for node in self.countries_graph.nodes)))
-            )
-        plt.show()
 
     # endregion
 
     # region ServiceMethods
     
-    def __get_full(self):
+    def __get_full(self) -> RailwayNet:
         # if full graph is initiated
         if self.full_graph is not None:
             return self.full_graph
 
         # try to load graph of all nets
         # if not found, calculate
-        full_graph = try_load_cached_file(RailwayNetContainer.CACHED_FULL_GRAPH_PATH)
+        full_graph = try_load_cached_file(RailwayNetManager.CACHED_FULL_GRAPH_PATH)
         if full_graph is None:
             full_graph = self.get_nets(self.countries_sorted, recalculate_centrality=False)
-            save_file_to_cache(full_graph, RailwayNetContainer.CACHED_FULL_GRAPH_PATH)
+            save_file_to_cache(full_graph, RailwayNetManager.CACHED_FULL_GRAPH_PATH)
         return full_graph
 
-    def __calculate_centrality(self, g: RailwayNet):
+    def __calculate_centrality(self, g: RailwayNet) -> None:
         for edge in tqdm(g.edges, desc=CALCULATING_CENTRALITY_MSG):
             g.edges[edge]['centrality'] = \
                 mean(
@@ -409,7 +331,7 @@ class RailwayNetContainer(dict):
 
 # region Functions
 
-def default_setup() -> RailwayNetContainer:
+def default_setup() -> RailwayNetManager:
     # manage graph data
     data_path = "./data/trains.csv"
     data = pd.read_csv(data_path, sep=',', dtype=str)[["iso3", "shape"]]
@@ -431,7 +353,7 @@ def default_setup() -> RailwayNetContainer:
     # synchronize graph data by available countries data
     data = data[data.iso3.isin(countries_data.iso3)]
 
-    return RailwayNetContainer(graph_data=data, countries_data=countries_data), data, countries_data
+    return RailwayNetManager(graph_data=data, countries_data=countries_data), data, countries_data
 
 def try_load_cached_file(path: str):
     data = None
