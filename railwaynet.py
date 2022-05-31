@@ -124,18 +124,18 @@ class RailwayNet(GeoGraph):
         )
         return points_dataframe
 
-    def draw_by_country(self, size: tuple[int, int] = (20, 10, ), ):
+    def draw_plot_by_country(self, size: tuple[int, int] = (20, 10, ), ):
         plt.figure(figsize=size)
         edge_color=[COLORS[ord(self[u][v]['iso3'][0]) % len(COLORS)] for u, v in self.edges]
         self.draw(edge_color=edge_color, node_size=0)
     
-    def draw_by_component(self, size: tuple[int, int] = (20, 10)):
+    def draw_plot_by_component(self, size: tuple[int, int] = (20, 10)):
         plt.figure(figsize=size)
         components = sorted(nx.connected_components(self), key=len, reverse=True)[:20]
         for index, component in enumerate(tqdm(components, desc=CALCULATING_COMPONENTS_MSG)):
             self.subgraph(component).draw(edge_color=COLORS[index % (len(COLORS))], node_size=0)
 
-    def draw_by_attribute(self, attr: str, size: tuple[int, int] = (20, 10)):
+    def draw_plot_by_attribute(self, attr: str, size: tuple[int, int] = (20, 10)):
 
         def green2red(ratio: float) -> tuple[float, float, float]:
             return (ratio, 1 - ratio, 0)
@@ -216,13 +216,15 @@ class RailwayNetManager(dict):
         self.graph_data = graph_data
         self.countries_data = RailwayNetManager.__countries_dataframe2dict(countries_data)
 
+        self.start_node = None
+        self.finish_node = None
+
         # sort countries by amount of railways in it
         self.countries_sorted = self.graph_data.iso3.value_counts().keys().to_list()
 
         # try to load cached list of nets
         # if not found, calculate
         # then init dict with graph values
-        
         railway_nets = try_load_cached_file(RailwayNetManager.CACHED_LIST_OF_NETS_PATH)
         if railway_nets is None:
             railway_nets = [RailwayNet(
@@ -289,6 +291,18 @@ class RailwayNetManager(dict):
             self.__calculate_centrality(res)
         return res
 
+    def save_node(self, point: tuple[float, float]) -> bool:
+        for node in self.full_graph.nodes:
+            if node.coord == point:
+                if self.start_node is None:
+                    self.start_node = node
+                    return True
+                elif self.finish_node is None:
+                    self.finish_node = node
+                    return True
+                return False
+        return False
+ 
     # endregion
 
     # region ServiceMethods
