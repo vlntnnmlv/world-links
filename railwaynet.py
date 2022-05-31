@@ -180,8 +180,8 @@ class RailwayNet(GeoGraph):
     # endregion
 
 class PathEdgePoint:
-    def __init__(self, point: Point, iso3: str):
-        self.point = point
+    def __init__(self, node: Point, iso3: str):
+        self.node = node
         self.iso3 = iso3
 
     def __eq__(self, other):
@@ -206,7 +206,7 @@ class CountryNet(GeoGraph):
                         country_attributes['capital'],
                         countries_data[neighbour]['capital'],
                         distance=country_attributes['capital'].distance(countries_data[neighbour]['capital']),
-                        speed=80,
+                        speed=(country_attributes['speed'] + countries_data[neighbour]['speed']) / 2,
                         )
 
     # endregion
@@ -313,16 +313,20 @@ class RailwayNetManager(dict):
                 return False
         return False
 
-    def find_path(self):
-        if self.start_node == None or self.finish_node == None:
-            return False
+    def find_path(self, o_paths: list) -> None:
         
+        def country_func(u,v,e_attrs):
+            return e_attrs['distance'] + 2 * e_attrs['speed']
+
+        def func(u,v,e_attrs):
+            return e_attrs['distance'] + 2 * e_attrs['speed'] + 0.5 * e_attrs['centrality']
+
         if self.start_node.iso3 == self.finish_node.iso3:
-            return nx.dijkstra_path(
+            o_paths[1] = nx.dijkstra_path(
                 self.full_graph.get_biggest_component(),
-                self.start_node.point,
-                self.finish_node.point,
-                "distance")
+                self.start_node.node,
+                self.finish_node.node,
+                func)
         
         else:
             frm = None
@@ -332,20 +336,18 @@ class RailwayNetManager(dict):
                     frm = n
                 if self.countries_graph.nodes[n]['iso3'] == self.finish_node.iso3:
                     to = n
-            cpath = nx.dijkstra_path(self.countries_graph, frm, to, "distance")
+            o_paths[0] = cpath = nx.dijkstra_path(self.countries_graph, frm, to, country_func)
             countries_in_path = []
             for p in cpath:
                 for n in self.countries_graph.nodes:
                     if n == p:
                         countries_in_path.append(self.countries_graph.nodes[n]['iso3'])
             g = self.get_nets(countries_in_path)
-            path = nx.dijkstra_path(
+            o_paths[1] = nx.dijkstra_path(
                 g,
-                self.start_node.point,
-                self.finish_node.point,
-                "distance")
-            print(f"Path found {len(path)}")
-            return path
+                self.start_node.node,
+                self.finish_node.node,
+                func)
 
     # endregion
 

@@ -16,19 +16,24 @@ class GUIRenderer:
         self.time_delta = self.clock.tick(60) / 1000.0
 
         self.country_buttons = dict()
-        button_width = self.w / (len(self.countries) + 1) - 1
+        button_width = self.w / (len(self.countries) + 2) - 1
         button_height = self.h
         self.country_buttons = dict()
 
-        self.country_buttons["full"] = pgg.elements.UIButton(
+        self.reset_button = pgg.elements.UIButton(
                     relative_rect=pg.Rect((0, 0), (button_width, button_height)),
+                    text="R",
+                    manager=self.manager)
+
+        self.country_buttons["full"] = pgg.elements.UIButton(
+                    relative_rect=pg.Rect((button_width, 0), (button_width, button_height)),
                     text="full",
                     manager=self.manager)
 
         for i, country in enumerate(self.countries):
             self.country_buttons[country] = \
                 pgg.elements.UIButton(
-                    relative_rect=pg.Rect(((i + 1) * button_width, 0), (button_width, button_height)),
+                    relative_rect=pg.Rect(((i + 2) * button_width, 0), (button_width, button_height)),
                     text=country,
                     manager=self.manager)
 
@@ -39,9 +44,11 @@ class GUIRenderer:
     def check_event(self, event: pg.event) -> str:
         result = None
         if event.type == pgg.UI_BUTTON_PRESSED:
-                    for country, button in self.country_buttons.items():
-                        if event.ui_element == button:
-                            result = country
+            for country, button in self.country_buttons.items():
+                if event.ui_element == button:
+                    result = country
+            if event.ui_element == self.reset_button:
+                result = "reset"
         self.manager.process_events(event)
         return result
 
