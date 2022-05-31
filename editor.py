@@ -17,6 +17,7 @@ class Editor:
         # set utility attributes
         self.running = False
         self.current_country = "full"
+        self.search_range = 2
 
         # set graph data
         self.railway_net_manager = railway_net_manager
@@ -25,12 +26,18 @@ class Editor:
         self.gui_surface = pg.Surface((1900, 50))
         self.graph_surface = pg.Surface((1900, 850))
         self.gui_renderer = GUIRenderer(self.gui_surface, self.railway_net_manager.countries_sorted)
-        self.graph_renderer = GraphRenderer(self.graph_surface, self.railway_net_manager.full_graph, COLORS)
+        self.graph_renderer = GraphRenderer(
+            self.graph_surface,
+            self.railway_net_manager.full_graph.get_biggest_component(),
+            COLORS,
+            self.search_range
+            )
 
     def run(self):
-
-        self.graph_renderer.render()
         
+        self.graph_renderer.render()
+        self.path = None
+
         self.running = True
         while self.running:
             for event in pg.event.get():
@@ -42,20 +49,27 @@ class Editor:
 
                 result = self.gui_renderer.check_event(event)
                 if result is not None:
+                    self.current_country = result
                     if result == "full":
                         self.graph_renderer.update_graph(self.railway_net_manager.full_graph.get_biggest_component())
                     else:
                         self.graph_renderer.update_graph(self.railway_net_manager.get_net(result))
                     self.graph_renderer.render()
                 
-                result = self.graph_renderer.check_event(event)
-                if result is not None:
-                    self.railway_net_manager.save_node(result)
-                    self.graph_renderer.render()
+                if self.current_country != "full":
+                    result = self.graph_renderer.check_event(event)
+                    if result is not None:
+                        self.railway_net_manager.save_node(result, self.current_country)
+                        self.graph_renderer.render()
+                        self.path = self.railway_net_manager.find_path()
+                        print(self.path)
+                        
 
             self.gui_renderer.render()
 
             self.screen.blit(self.gui_surface, (0,0))
             self.screen.blit(self.graph_surface, (0,50))
+
+            pg.draw.circle(self.screen, 'blue', pg.mouse.get_pos(), self.search_range, 1)
 
             pg.display.update()
