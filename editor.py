@@ -2,7 +2,7 @@ from scipy.spatial import KDTree
 from graphrenderer import GraphRenderer
 from railwaynet import RailwayNetManager, COLORS
 from guirenderer import GUIRenderer
-
+from threading import Thread
 import pygame as pg
 
 class Editor:
@@ -34,7 +34,9 @@ class Editor:
             )
 
     def run(self):
-        
+        self.screen.fill((255, 240, 250))
+        pg.display.flip()
+
         self.graph_renderer.render()
         self.path = None
 
@@ -61,9 +63,9 @@ class Editor:
                     if result is not None:
                         self.railway_net_manager.save_node(result, self.current_country)
                         self.graph_renderer.render()
-                        self.path = self.railway_net_manager.find_path()
-                        print(self.path)
-                        
+                        # self.path = self.railway_net_manager.find_path()
+                        t = Thread(target=self.railway_net_manager.find_path, args=())
+                        t.start()
 
             self.gui_renderer.render()
 
