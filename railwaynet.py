@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from functools import reduce, lru_cache
 from matplotlib import pyplot as plt
 from rich.console import Console
@@ -75,6 +76,13 @@ PROGRESS_BAR_WIDTH = 100
 
 # region Types  
 
+@dataclass
+class RailwayNetInfo:
+    nodes: int
+    edges: int
+    components: int
+    biggest_component_part: float
+
 class RailwayNet(GeoGraph):
 
     # region Construction
@@ -146,17 +154,27 @@ class RailwayNet(GeoGraph):
         ratio_derivative = max(attr_list) - min_attr
         self.draw(edge_color=[green2red((attr - min_attr)/ratio_derivative) for attr in attr_list], node_size=0)
 
-    def describe(self) -> None:
-        res = "\n"
-        res += f"                   nodes: {nx.number_of_nodes(self)}\n"
-        res += f"                   edges: {nx.number_of_edges(self)}\n"
-        res += f"              components: {nx.number_connected_components(self)}\n"
-        res += f"               connected: {nx.is_connected(self)}\n"
+    def describe(self, verbose=True) -> RailwayNetInfo:
+        nodes = nx.number_of_nodes(self)
+        edges = nx.number_of_edges(self)
+        components = nx.number_connected_components(self)
+        biggest_component_part = \
+            nx.number_of_nodes(self.get_biggest_component()) / nx.number_of_nodes(self)
 
-        biggest_component_part = nx.number_of_nodes(self.get_biggest_component()) / nx.number_of_nodes(self)
-        res += f"  biggest component part: {biggest_component_part:.6}\n"
+        if verbose:
+            res = "\n"
+            res += f"                   nodes: {nodes}\n"
+            res += f"                   edges: {edges}\n"
+            res += f"              components: {components}\n"
+            res += f"  biggest component part: {biggest_component_part:.6}\n"
+            print(res)
 
-        print(res)
+        return RailwayNetInfo(
+            nodes=nodes,
+            edges=edges,
+            components=components,
+            biggest_component_part=biggest_component_part
+            )
 
     # endregion
 
@@ -263,6 +281,33 @@ class RailwayNetManager(dict):
     # endregion
 
     # region PublicMethods
+
+    def describe(self) -> pd.DataFrame:
+        countries = []
+        nodes = []
+        edges = []
+        components = []
+        biggest_component_part = []
+        for key, value in self.items():
+            info = value.describe(False)
+            countries.append(key)
+            nodes.append(info.nodes)
+            edges.append(info.edges)
+            components.append(info.components)
+            biggest_component_part.append(info.biggest_component_part)
+        description = pd.DataFrame(
+            {
+                "country"                : countries,
+                "nodes"                  : nodes,
+                "edges"                  : edges,
+                "components"             : components,
+                "biggest_component_part" : biggest_component_part
+            }
+        )
+        with open("railwaynet_description.csv", "w") as f:
+            description.to_csv(f)
+
+        return description
 
     def get_random(self):
         countries_number = random.randrange(1, len(self.countries_sorted + 1))
