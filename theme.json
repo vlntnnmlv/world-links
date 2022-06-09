@@ -5,5 +5,13 @@
         {
             "normal_text":"#000000"
         }
+    },
+    "button":
+     {
+        "misc":
+        {
+            "border_width": "1",
+            "shadow_width": "0"
+        }
     }
 }

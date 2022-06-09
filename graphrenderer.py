@@ -12,6 +12,7 @@ class GraphRenderer:
     def __init__(
             self,
             surface: pg.Surface,
+            fgraph: RailwayNet,
             graph: RailwayNet,
             colors: list[str],
             search_range: int = 2,
@@ -23,6 +24,11 @@ class GraphRenderer:
         self.bg_color = bg_color
         self.colors = colors
         
+        # full graph
+        self.fgraph = fgraph
+        self.fgraph_surface = None
+
+        # displayed graph
         self.graph = graph
         self.points_data = None
 
@@ -40,7 +46,7 @@ class GraphRenderer:
     # region PublicMethods
 
     def update_points_positions(self) -> None:
-        self.points_data = self.graph.get_points_dataframe()
+        self.points_data = self.graph.get_points_dataframe(self.fgraph)
         
         self.vertical_bounds = self.points_data.lat.max(), self.points_data.lat.min()
         self.horizontal_bounds = self.points_data.lon.min(), self.points_data.lon.max()
@@ -102,17 +108,24 @@ class GraphRenderer:
             self.render_internal()
 
     def render_internal(self) -> None:
-        self.surface.fill(self.bg_color)
-        for i in self.points_data.index:
-            pg.draw.rect(
-                self.surface,
-                self.points_data.color.iloc[i],
-                pg.Rect(
-                    (self.points_data.x.iloc[i], self.points_data.y.iloc[i]),
-                    (self.points_data.radius.iloc[i], self.points_data.radius.iloc[i])),
-                self.points_data.radius.iloc[i]
-                )
+        if self.graph == self.fgraph and self.fgraph_surface is not None:
+            self.surface.blit(self.fgraph_surface, (0,0))
+        else:
+            self.surface.fill(self.bg_color)
+            for i in self.points_data.index:
+                pg.draw.rect(
+                    self.surface,
+                    self.points_data.color.iloc[i],
+                    pg.Rect(
+                        (self.points_data.x.iloc[i], self.points_data.y.iloc[i]),
+                        (self.points_data.radius.iloc[i], self.points_data.radius.iloc[i])),
+                    self.points_data.radius.iloc[i]
+                    )
         
+        if self.graph == self.fgraph and self.fgraph_surface is None:
+            self.fgraph_surface = pg.Surface(self.size)
+            self.fgraph_surface.blit(self.surface, (0,0))
+
         if self.path_points_data is not None:
             for i in self.path_points_data.index[:-1]:
                 pg.draw.line(

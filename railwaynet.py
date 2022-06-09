@@ -1,10 +1,16 @@
-from dataclasses import dataclass
 from functools import reduce, lru_cache
-from matplotlib import pyplot as plt
-from rich.console import Console
 from geograph import GeoGraph, Point
+from numpy.random import default_rng
+from matplotlib import pyplot as plt
+from dataclasses import dataclass
+from rich.console import Console
+from scipy.stats import norm
+from random import choice
 from statistics import mean
 from tqdm import tqdm
+from time import time
+
+from networkx import NetworkXNoPath
 
 import networkx as nx
 import pandas as pd
@@ -15,9 +21,12 @@ import pickle
 import random
 import bz2
 
+
 matplotlib.use('Qt5Agg')
 
 # region Constants
+
+NORM_RANDOM = lambda : norm.rvs(size=1, random_state=default_rng())[0]
 
 COLORS = [
           'crimson', 'cyan',
@@ -110,7 +119,7 @@ class RailwayNet(GeoGraph):
                                 b,
                                 distance=a.distance(b),
                                 centrality=a.distance(countries_data[iso3]['capital']),
-                                speed=80 if countries_data is None else countries_data[iso3]['speed'],
+                                speed=(80 if countries_data is None else countries_data[iso3]['speed']) + get_random(5),
                                 iso3=iso3
                             )
 
@@ -122,12 +131,12 @@ class RailwayNet(GeoGraph):
     def get_biggest_component(self):
         return self.subgraph(max(nx.connected_components(self), key=len))
 
-    def get_points_dataframe(self):
+    def get_points_dataframe(self, full_graph):
         points_dataframe = pd.DataFrame(
             {
-                'lat':  [node.coord_reverse[0] for node in self.nodes],
-                'lon':  [node.coord_reverse[1] for node in self.nodes],
-                'iso3': [self.nodes[node]['iso3'] for node in self.nodes]
+                'lat':  [node.coord_reverse[0] for node in self.nodes if node in full_graph.nodes],
+                'lon':  [node.coord_reverse[1] for node in self.nodes if node in full_graph.nodes],
+                'iso3': [self.nodes[node]['iso3'] for node in self.nodes if node in full_graph.nodes]
             }
         )
         return points_dataframe
@@ -247,6 +256,10 @@ class RailwayNetManager(dict):
         self.start_node = None
         self.finish_node = None
 
+        self.pathfinding_results_path = "./cached/results.csv"
+        with open(self.pathfinding_results_path, "w") as f:
+            f.write("frm_iso3,frm_lat,frm_lon,to_iso3,frm_lat,frm_lon,timec,time\n")
+
         # sort countries by amount of railways in it
         self.countries_sorted = self.graph_data.iso3.value_counts().keys().to_list()
 
@@ -358,21 +371,26 @@ class RailwayNetManager(dict):
                 return False
         return False
 
-    def find_path(self, o_paths: list) -> None:
+    def find_path(self, o_paths: list, func_d=None) -> None:
         
+        timespan_c = 0
+        timespan = 0
+
         def country_func(u,v,e_attrs):
             return e_attrs['distance'] + 2 * e_attrs['speed']
 
         def func(u,v,e_attrs):
-            return e_attrs['distance'] + 2 * e_attrs['speed'] + 0.5 * e_attrs['centrality']
+            return e_attrs['distance'] + 1/e_attrs['speed'] + e_attrs['cost'] + 1/e_attrs['centrality']
 
         if self.start_node.iso3 == self.finish_node.iso3:
+            start = time()
             o_paths[1] = nx.dijkstra_path(
                 self.full_graph.get_biggest_component(),
                 self.start_node.node,
                 self.finish_node.node,
-                func)
-        
+                func if func_d is None else func_d)
+            end = time()
+            timespan += end - start
         else:
             frm = None
             to = None
@@ -381,18 +399,68 @@ class RailwayNetManager(dict):
                     frm = n
                 if self.countries_graph.nodes[n]['iso3'] == self.finish_node.iso3:
                     to = n
+            start = time()
             o_paths[0] = cpath = nx.dijkstra_path(self.countries_graph, frm, to, country_func)
+            end = time()
+            timespan_c += end - start
+
             countries_in_path = []
             for p in cpath:
                 for n in self.countries_graph.nodes:
                     if n == p:
                         countries_in_path.append(self.countries_graph.nodes[n]['iso3'])
-            g = self.get_nets(countries_in_path)
+            g = self.get_nets(countries_in_path, recalculate_centrality=False)
+            start = time()
             o_paths[1] = nx.dijkstra_path(
                 g,
                 self.start_node.node,
                 self.finish_node.node,
-                func)
+                func if func_d is None else func_d)
+            end = time()
+            timespan += end - start
+        self.__save_result(self.start_node, self.finish_node, timespan_c, timespan)
+        return timespan + timespan_c
+
+    def test_efficiency(self):
+        fake = [None, None]
+
+        g = self.full_graph.get_biggest_component()
+        my_time = []
+        dij_time = []
+        for _ in range(1000):
+            start = choice(list(g.nodes))
+            finish = choice(list(g.nodes))
+
+            self.start_node = PathEdgePoint(start, g.nodes[start]['iso3'])
+            self.finish_node = PathEdgePoint(finish, g.nodes[finish]['iso3'])
+
+            def func(u,v,e_attrs):
+                return e_attrs['distance'] + 1/e_attrs['speed'] + 1/e_attrs['centrality']
+            
+            my_t = 0
+            dij_t = 0
+
+            try:
+                my_t = self.find_path(fake, func_d=func)
+            except NetworkXNoPath:
+                continue
+
+            try:
+                s = time()
+                nx.dijkstra_path(g, start, finish, func)
+                e = time()
+                dij_t = e - s
+            except NetworkXNoPath:
+                continue
+            
+            print(f"my {my_t}, dij {dij_t}")
+            my_time.append(my_t)
+            dij_time.append(dij_t)
+
+        self.start_node = None
+        self.finish_node = None
+
+        return my_time, dij_time
 
     # endregion
 
@@ -418,6 +486,12 @@ class RailwayNetManager(dict):
                     (edge[0].distance(self.countries_data[neighbour]['capital']) \
                         for neighbour in \
                             self.countries_data[g.edges[edge]['iso3']]['neighbours']))
+            g.edges[edge]['cost'] = 2 + 1 / g.edges[edge]['centrality'] + get_random(1.5)
+    
+    def __save_result(self, s: PathEdgePoint, e: PathEdgePoint, timec: float, time: float):
+        with open(self.pathfinding_results_path, "a") as f:
+            f.write(f"{s.iso3},{s.node.coord_reverse[0]},{s.node.coord_reverse[1]},{e.iso3},{e.node.coord_reverse[0]},{e.node.coord_reverse[1]},{timec},{time}\n")
+
 
     @staticmethod
     def __countries_dataframe2dict(countries_data: pd.DataFrame) -> dict:
@@ -473,6 +547,16 @@ def try_load_cached_file(path: str):
 
 def save_file_to_cache(obj, path: str):
     with contextlib.closing(bz2.BZ2File(path, 'wb')) as f:
-                pickle.dump(obj, f) 
+                pickle.dump(obj, f)
+
+def get_random(span: float):
+    n = NORM_RANDOM()
+    if n < -1:
+        n = -1
+    if n > 1:
+        n = 1
+    return n * span
+
+
 
 # endregion

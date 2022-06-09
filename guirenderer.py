@@ -16,7 +16,7 @@ class GUIRenderer:
         self.time_delta = self.clock.tick(60) / 1000.0
 
         self.country_buttons = dict()
-        button_width = self.w / (len(self.countries) + 2) - 1
+        button_width = self.w / (len(self.countries) + 2)
         button_height = self.h
         self.country_buttons = dict()
 

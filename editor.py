@@ -1,4 +1,3 @@
-from scipy.spatial import KDTree
 from graphrenderer import GraphRenderer
 from railwaynet import RailwayNetManager, COLORS
 from guirenderer import GUIRenderer
@@ -11,8 +10,8 @@ class Editor:
         pg.init()
         
         # init application screen
-        self.size = self.w, self.h = (1900, 900)
-        self.screen = pg.display.set_mode(self.size)
+        self.screen = pg.display.set_mode((0,0), pg.FULLSCREEN)
+        self.size = self.w, self.h = self.screen.get_size()
         self.screen.fill((255, 240, 250))
         pg.display.flip()
 
@@ -26,11 +25,12 @@ class Editor:
         self.railway_net_manager = railway_net_manager
 
         # set renderers
-        self.gui_surface = pg.Surface((1900, 50))
-        self.graph_surface = pg.Surface((1900, 850))
+        self.gui_surface = pg.Surface((self.w, 50))
+        self.graph_surface = pg.Surface((self.w, self.h - 50))
         self.gui_renderer = GUIRenderer(self.gui_surface, self.railway_net_manager.countries_sorted)
         self.graph_renderer = GraphRenderer(
             self.graph_surface,
+            self.railway_net_manager.full_graph.get_biggest_component(),
             self.railway_net_manager.full_graph.get_biggest_component(),
             COLORS,
             self.search_range
@@ -57,13 +57,14 @@ class Editor:
                 self.railway_net_manager.finish_node = None
                 self.graph_renderer.path = None
                 self.graph_renderer.path_points_data = None
-            else:            
+                self.graph_renderer.update_graph(self.railway_net_manager.full_graph.get_biggest_component())
+            else:
                 self.current_country = result
                 if result == "full":
                     self.graph_renderer.update_graph(self.railway_net_manager.full_graph.get_biggest_component())
                 else:
                     self.graph_renderer.update_graph(self.railway_net_manager.get_net(result))
-            self.graph_renderer.render()
+            self.graph_renderer.render(True)
 
     def manage_graphrenderer_event(self, event: pg.event):
         result = self.graph_renderer.check_event(event)
